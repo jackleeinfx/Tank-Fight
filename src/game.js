@@ -7,7 +7,7 @@ const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('startBtn');
 const inputText = document.getElementById('inputText');
 
-const CELL_SIZE = 20;
+const CELL_SIZE = 10;
 const COLS = Math.floor(canvas.width / CELL_SIZE);
 const ROWS = Math.floor(canvas.height / CELL_SIZE);
 
@@ -34,40 +34,64 @@ function initGame(text) {
     player = null;
 
     // Filter text for English letters only (A-Z, a-z)
-    const cleanText = text.replace(/[^a-zA-Z]/g, '');
-
-    if (cleanText.length === 0) {
-        alert("Please enter valid English text.");
+    // We want to keep the structure, so we iterate the raw text, but only spawn entities for letters.
+    if (text.trim().length === 0) {
+        alert("Please enter some text.");
         return;
     }
 
-    // Spawn Player
-    const px = Math.floor(COLS / 2);
-    const py = Math.floor(ROWS / 2);
-    player = new Player(px, py);
-    grid[py][px] = player;
+    // Spawn Player (at the end of the text or safe spot)
+    // Let's spawn player at 0,0 first, and move text slightly if needed,
+    // or spawn player after the text.
+    // Requirement: "All text at same position as article".
+    // Let's spawn text starting from 0,0.
+    // And spawn player at a random empty spot.
 
-    // Spawn Letters
-    // Simple random placement for now, ensuring no overlap
-    for (let char of cleanText) {
-        let placed = false;
-        let attempts = 0;
-        while (!placed && attempts < 100) {
-            const lx = Math.floor(Math.random() * COLS);
-            const ly = Math.floor(Math.random() * ROWS);
-            if (grid[ly][lx] === null) {
-                const letter = new Letter(lx, ly, char); // Behavior default for now
-                letters.push(letter);
-                grid[ly][lx] = letter;
-                placed = true;
-            }
-            attempts++;
+    let curX = 0;
+    let curY = 0;
+
+    for (let char of text) {
+        // Handle newlines
+        if (char === '\n') {
+            curX = 0;
+            curY++;
+            if (curY >= ROWS) break; // Out of space
+            continue;
+        }
+
+        // Handle wrapping
+        if (curX >= COLS) {
+            curX = 0;
+            curY++;
+            if (curY >= ROWS) break;
+        }
+
+        // Only spawn entity if it's a letter
+        if (/[a-zA-Z]/.test(char)) {
+            const letter = new Letter(curX, curY, char);
+            letters.push(letter);
+            grid[curY][curX] = letter;
+        }
+
+        // Move cursor for next char (even if it was a space or symbol, we leave a gap)
+        curX++;
+    }
+
+    // Spawn Player in a random empty spot
+    let placed = false;
+    while (!placed) {
+        const px = Math.floor(Math.random() * COLS);
+        const py = Math.floor(Math.random() * ROWS);
+        if (grid[py][px] === null) {
+            player = new Player(px, py);
+            grid[py][px] = player;
+            placed = true;
         }
     }
 
     gameRunning = true;
     updateStatus("Playing");
-    scoreEl.textContent = "0";
+    scoreEl.textContent = player.score;
     draw();
     lastTime = performance.now();
     requestAnimationFrame(gameLoop);
@@ -138,7 +162,42 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
+    // Draw Clusters Backgrounds
+    for (const letter of letters) {
+        // Check for neighbors of same char
+        const neighbors = [
+            [letter.x, letter.y - 1], // Up
+            [letter.x, letter.y + 1], // Down
+            [letter.x - 1, letter.y], // Left
+            [letter.x + 1, letter.y]  // Right
+        ];
+
+        let hasSameNeighbor = false;
+        for (const [nx, ny] of neighbors) {
+            if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                const neighbor = grid[ny][nx];
+                if (neighbor instanceof Letter && neighbor.char === letter.char) {
+                    hasSameNeighbor = true;
+                    break;
+                }
+            }
+        }
+
+        if (hasSameNeighbor) {
+            const x = letter.x * CELL_SIZE;
+            const y = letter.y * CELL_SIZE;
+            ctx.fillStyle = letter.color;
+            ctx.globalAlpha = 0.3; // Transparent background
+            ctx.fillRect(x, y, CELL_SIZE, CELL_SIZE);
+            ctx.strokeStyle = letter.color;
+            ctx.globalAlpha = 1.0;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, CELL_SIZE, CELL_SIZE);
+        }
+    }
+
     // Draw Letters
+    ctx.globalAlpha = 1.0;
     for (const letter of letters) {
         const cx = letter.x * CELL_SIZE + CELL_SIZE / 2;
         const cy = letter.y * CELL_SIZE + CELL_SIZE / 2;

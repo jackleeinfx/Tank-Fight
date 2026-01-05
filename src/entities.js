@@ -8,7 +8,7 @@ export class Entity {
 export class Player extends Entity {
     constructor(x, y) {
         super(x, y);
-        this.score = 0;
+        this.score = 2;
         this.symbol = '☺'; // Or some other symbol
         this.color = '#fff';
     }
